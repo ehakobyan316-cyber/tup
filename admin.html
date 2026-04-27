@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="hy">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel</title>
+    <style>
+        body {
+            margin: 0;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+
+        .admin-content {
+            background: #111;
+            padding: 20px;
+            border-radius: 15px;
+            border: 2px solid gold;
+            min-width: 300px;
+            max-width: 95%;
+        }
+
+        @media (max-width: 480px) {
+            .admin-content {
+                padding: 15px;
+                min-width: 90%;
+            }
+
+            .admin-header {
+                font-size: 18px;
+            }
+
+            .admin-input {
+                font-size: 14px;
+                padding: 8px;
+            }
+
+            .admin-btn-action {
+                padding: 8px 16px;
+                font-size: 14px;
+            }
+
+            .toggle-label {
+                font-size: 14px;
+            }
+        }
+
+        .admin-header {
+            color: gold;
+            font-size: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .admin-input-group {
+            margin-bottom: 15px;
+        }
+
+        .admin-input {
+            width: 100%;
+            padding: 10px;
+            background: #222;
+            border: 1px solid gold;
+            border-radius: 5px;
+            color: white;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+
+        .admin-btn-action {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        .admin-btn-add {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .admin-btn-close {
+            background: gold;
+            color: black;
+        }
+
+        .messages-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin: 15px 0;
+            background: #222;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .message-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            border-bottom: 1px solid #333;
+            color: white;
+        }
+
+        .message-item:last-child {
+            border-bottom: none;
+        }
+
+        .delete-msg-btn {
+            background: #f44336;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin: 20px 0;
+            padding: 15px;
+            background: #222;
+            border-radius: 8px;
+        }
+
+        .toggle-label {
+            color: gold;
+            font-size: 16px;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 60px;
+            height: 30px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #f44336;
+            transition: .4s;
+            border-radius: 30px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: #4CAF50;
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(30px);
+        }
+
+        #adminSection {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-content">
+        <div class="admin-header">Ադմին Պանել</div>
+        
+        <div id="adminSection">
+            <button class="admin-btn-action admin-btn-close" style="width: 100%; background: #FF9800; color: white;" onclick="resetClicks()">Վերականգնել Սեղմումները</button>
+            
+            <div class="admin-input-group">
+                <input type="text" id="newHeader" class="admin-input" placeholder="Վերնագիր (օրինակ՝ Շնորհավոր դուք հաղթեցիք)">
+                <input type="text" id="newSymbol" class="admin-input" placeholder="Սիմվոլ (օրինակ՝ 💎)">
+            </div>
+            
+            <button class="admin-btn-action admin-btn-add" onclick="addMessage()">Ավելացնել</button>
+            
+            <div class="admin-header" style="font-size: 16px; margin-top: 20px;">Շահման հաղորդագրությունները</div>
+            <div class="messages-list" id="messagesList"></div>
+            
+            <div class="admin-header" style="font-size: 16px; margin-top: 20px;">Պարտության հաղորդագրությունները</div>
+            <div class="admin-input-group">
+                <input type="text" id="newLosingHeader" class="admin-input" placeholder="Վերնագիր (օրինակ՝ Չհաջողվեց)">
+                <input type="text" id="newLosingSymbol" class="admin-input" placeholder="Սիմվոլ (օրինակ՝ ❌)">
+            </div>
+            <button class="admin-btn-action admin-btn-add" onclick="addLosingMessage()">Ավելացնել</button>
+            <div class="messages-list" id="losingMessagesList"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3000/api';
+        let winningMessages = [];
+        let losingMessages = [];
+
+        // Load data from API
+        async function loadData() {
+            try {
+                const winningRes = await fetch(`${API_URL}/messages/winning`);
+                winningMessages = await winningRes.json();
+                renderMessagesList();
+
+                const losingRes = await fetch(`${API_URL}/messages/losing`);
+                losingMessages = await losingRes.json();
+                renderLosingMessagesList();
+            } catch (err) {
+                console.error('Error loading data:', err);
+            }
+        }
+
+        // Initialize on page load
+        window.onload = function() {
+            loadData();
+        };
+
+        async function resetClicks() {
+            try {
+                await fetch(`${API_URL}/gamestate`, { method: 'DELETE' });
+                alert('Սեղմումները վերականգնվել են։');
+            } catch (err) {
+                console.error('Error resetting game:', err);
+                alert('Սխալ տեղի ունեցավ');
+            }
+        }
+
+        async function addMessage() {
+            const header = document.getElementById('newHeader').value.trim();
+            const symbol = document.getElementById('newSymbol').value.trim();
+
+            if (header && symbol) {
+                try {
+                    const res = await fetch(`${API_URL}/messages/winning`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ header, symbol })
+                    });
+                    const newMessage = await res.json();
+                    winningMessages.push(newMessage);
+                    document.getElementById('newHeader').value = '';
+                    document.getElementById('newSymbol').value = '';
+                    renderMessagesList();
+                } catch (err) {
+                    console.error('Error adding message:', err);
+                    alert('Սխալ տեղի ունեցավ');
+                }
+            } else {
+                alert('Լրացրեք բոլոր դաշտերը');
+            }
+        }
+
+        async function deleteMessage(id) {
+            if (confirm('Ջնջե՞լ այս հաղորդագրությունը')) {
+                try {
+                    await fetch(`${API_URL}/messages/winning/${id}`, { method: 'DELETE' });
+                    winningMessages = winningMessages.filter(m => m._id !== id);
+                    renderMessagesList();
+                } catch (err) {
+                    console.error('Error deleting message:', err);
+                    alert('Սխալ տեղի ունեցավ');
+                }
+            }
+        }
+
+        function renderMessagesList() {
+            const list = document.getElementById('messagesList');
+            list.innerHTML = '';
+
+            if (winningMessages.length === 0) {
+                list.innerHTML = '<div style="color: #888; text-align: center; padding: 20px;">Հաղորդագրություններ չկան</div>';
+                return;
+            }
+
+            winningMessages.forEach((msg) => {
+                const item = document.createElement('div');
+                item.className = 'message-item';
+                item.innerHTML = `
+                    <span>${msg.header} ${msg.symbol}</span>
+                    <button class="delete-msg-btn" onclick="deleteMessage('${msg._id}')">Ջնջել</button>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        async function addLosingMessage() {
+            const header = document.getElementById('newLosingHeader').value.trim();
+            const symbol = document.getElementById('newLosingSymbol').value.trim();
+
+            if (header || symbol) {
+                try {
+                    const res = await fetch(`${API_URL}/messages/losing`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ header, symbol })
+                    });
+                    const newMessage = await res.json();
+                    losingMessages.push(newMessage);
+                    document.getElementById('newLosingHeader').value = '';
+                    document.getElementById('newLosingSymbol').value = '';
+                    renderLosingMessagesList();
+                } catch (err) {
+                    console.error('Error adding message:', err);
+                    alert('Սխալ տեղի ունեցավ');
+                }
+            } else {
+                alert('Լրացրեք գոնե մեկ դաշտը');
+            }
+        }
+
+        async function deleteLosingMessage(id) {
+            if (confirm('Ջնջե՞լ այս հաղորդագրությունը')) {
+                try {
+                    await fetch(`${API_URL}/messages/losing/${id}`, { method: 'DELETE' });
+                    losingMessages = losingMessages.filter(m => m._id !== id);
+                    renderLosingMessagesList();
+                } catch (err) {
+                    console.error('Error deleting message:', err);
+                    alert('Սխալ տեղի ունեցավ');
+                }
+            }
+        }
+
+        function renderLosingMessagesList() {
+            const list = document.getElementById('losingMessagesList');
+            list.innerHTML = '';
+
+            if (losingMessages.length === 0) {
+                list.innerHTML = '<div style="color: #888; text-align: center; padding: 20px;">Հաղորդագրություններ չկան</div>';
+                return;
+            }
+
+            losingMessages.forEach((msg) => {
+                const item = document.createElement('div');
+                item.className = 'message-item';
+                item.innerHTML = `
+                    <span>${msg.header} ${msg.symbol}</span>
+                    <button class="delete-msg-btn" onclick="deleteLosingMessage('${msg._id}')">Ջնջել</button>
+                `;
+                list.appendChild(item);
+            });
+        }
+    </script>
+</body>
+</html>

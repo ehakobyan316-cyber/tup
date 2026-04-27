@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="hy">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jackpot</title>
+
+<style>
+body {
+    margin: 0;
+    background: #000;
+    display: flex;
+    justify-content: center;
+}
+
+/* WRAPPER */
+.wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 500px;
+}
+
+/* BACKGROUND */
+.bg {
+    width: 100%;
+    display: block;
+}
+
+/* GRID — արդեն կարգավորված */
+.boxes-container {
+    position: absolute;
+    inset: 24% 10% 23% 12%;
+
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+
+    gap: 0px;
+}
+
+
+.click-box:nth-child(3n) {
+    margin-left: 4px; /* 👉 փոխիր չափը ըստ պետքի */
+}
+
+/* BOX */
+.click-box {
+    width: 78%;
+    height: 78%;
+    margin: auto;
+
+    border: 2px solid gold;
+    background: rgba(255, 215, 0, 0.15);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: 0.25s;
+}
+
+
+.click-box {
+    border-radius: 0;
+}
+
+.click-box {
+    border: none;
+    outline: none;
+}
+
+.click-box:hover {
+    transform: scale(1.08);
+    background: rgba(255, 215, 0, 0.3);
+}
+
+/* MODAL */
+.winning-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.85);
+    justify-content: center;
+    align-items: center;
+}
+
+.winning-modal.show {
+    display: flex;
+}
+
+.modal-content {
+    background: #111;
+    padding: 30px;
+    border-radius: 15px;
+    text-align: center;
+    border: 2px solid gold;
+    min-width: 200px;
+}
+
+.modal-header {
+    color: gold;
+    font-size: 18px;
+    margin-bottom: 10px;
+}
+
+.modal-body {
+    color: white;
+    font-size: 28px;
+    margin-bottom: 20px;
+}
+
+.modal-close-btn {
+    padding: 10px 25px;
+    border: none;
+    border-radius: 8px;
+    background: gold;
+    cursor: pointer;
+}
+</style>
+</head>
+
+<body>
+
+<div class="wrapper">
+    <img src="background.jpg" class="bg">
+    <div class="boxes-container" id="boxesContainer"></div>
+</div>
+
+<div id="winningModal" class="winning-modal">
+    <div class="modal-content">
+        <div class="modal-header" id="modalHeader"></div>
+        <div class="modal-body" id="winningAmount"></div>
+        <button class="modal-close-btn" onclick="closeModal()">ՓԱԿԵԼ</button>
+    </div>
+</div>
+
+<script>
+// API Base URL
+const API_URL = 'http://localhost:3000/api';
+
+// Initialize winning messages from API
+let winningMessages = [];
+// Initialize losing messages from API
+let losingMessages = [];
+
+// Track if game has been played (only one box click total)
+let gamePlayed = false;
+let clickedBoxIndex = -1;
+let wasWin = false;
+
+// Load data from API
+async function loadData() {
+    try {
+        const winningRes = await fetch(`${API_URL}/messages/winning`);
+        winningMessages = await winningRes.json();
+        if (winningMessages.length === 0) {
+            winningMessages = [{ _id: 'default', header: 'Շնորհավոր դուք հաղթեցիք', symbol: '💎' }];
+        }
+
+        const losingRes = await fetch(`${API_URL}/messages/losing`);
+        losingMessages = await losingRes.json();
+        if (losingMessages.length === 0) {
+            losingMessages = [{ _id: 'default', header: '', symbol: '❌ Չհաջողվեց' }];
+        }
+
+        const gameStateRes = await fetch(`${API_URL}/gamestate`);
+        const gameState = await gameStateRes.json();
+        gamePlayed = gameState.gamePlayed;
+        clickedBoxIndex = gameState.clickedBoxIndex;
+        wasWin = gameState.wasWin;
+    } catch (err) {
+        console.error('Error loading data:', err);
+        // Fallback to defaults if API fails
+        winningMessages = [{ _id: 'default', header: 'Շնորհավոր դուք հաղթեցիք', symbol: '💎' }];
+        losingMessages = [{ _id: 'default', header: '', symbol: '❌ Չհաջողվեց' }];
+    }
+}
+
+loadData();
+
+// ստեղծում ենք 12 տուփ
+const container = document.getElementById('boxesContainer');
+const boxes = [];
+
+for (let i = 0; i < 12; i++) {
+    const box = document.createElement('div');
+    box.className = 'click-box';
+    box.dataset.index = i;
+
+    box.onclick = async function() {
+        // Check if game has already been played
+        if (gamePlayed) {
+            return;
+        }
+        gamePlayed = true;
+        clickedBoxIndex = i;
+        
+        // Save to API
+        try {
+            await fetch(`${API_URL}/gamestate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gamePlayed: true, clickedBoxIndex: i, wasWin: false })
+            });
+        } catch (err) {
+            console.error('Error saving game state:', err);
+        }
+        
+        // Disable all boxes
+        boxes.forEach(b => {
+            b.style.pointerEvents = 'none';
+            b.style.opacity = '0.5';
+        });
+        
+        checkRandomWin(this, i);
+    };
+
+    container.appendChild(box);
+    boxes.push(box);
+}
+
+// Restore game state on page load (with delay to ensure boxes are rendered)
+setTimeout(() => {
+    if (gamePlayed) {
+        boxes.forEach(b => {
+            b.style.pointerEvents = 'none';
+            b.style.opacity = '0.5';
+        });
+        
+        // Restore box color
+        if (clickedBoxIndex >= 0 && boxes[clickedBoxIndex]) {
+            if (wasWin) {
+                boxes[clickedBoxIndex].style.background = "rgba(0,100,0,0.8)";
+            } else {
+                boxes[clickedBoxIndex].style.background = "rgba(139,0,0,0.8)";
+            }
+        }
+    }
+}, 100);
+
+// Poll for game state changes (for admin reset)
+setInterval(async () => {
+    try {
+        const gameStateRes = await fetch(`${API_URL}/gamestate`);
+        const gameState = await gameStateRes.json();
+        if (gameState.gamePlayed === false && gamePlayed === true) {
+            location.reload();
+        }
+    } catch (err) {
+        console.error('Error polling game state:', err);
+    }
+}, 2000);
+
+
+async function checkRandomWin(box, index) {
+    const modal = document.getElementById('winningModal');
+    const header = document.getElementById('modalHeader');
+    const body = document.getElementById('winningAmount');
+
+    const isWinner = Math.random() < 0.3;
+
+    if (isWinner) {
+        // Randomly select a winning message
+        const randomMessage = winningMessages[Math.floor(Math.random() * winningMessages.length)];
+        header.textContent = randomMessage.header;
+        body.textContent = randomMessage.symbol;
+        box.style.background = "rgba(0,100,0,0.8)";
+        wasWin = true;
+    } else {
+        header.textContent = '';
+        body.textContent = '❌ Չհաջողվեց';
+        box.style.background = "rgba(139,0,0,0.8)";
+        wasWin = false;
+    }
+
+    // Save win/lose state to API
+    try {
+        await fetch(`${API_URL}/gamestate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gamePlayed: true, clickedBoxIndex, wasWin })
+        });
+    } catch (err) {
+        console.error('Error saving win state:', err);
+    }
+
+    modal.classList.add('show');
+}
+
+function closeModal() {
+    document.getElementById('winningModal').classList.remove('show');
+}
+</script>
+
+</body>
+</html>
