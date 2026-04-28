@@ -212,7 +212,7 @@
     </div>
 
     <script>
-        const API_URL = 'http://localhost:3000/api';
+        const API_URL = `${window.location.protocol}//${window.location.hostname}:${window.location.port}/api`;
         let winningMessages = [];
         let losingMessages = [];
 
@@ -257,6 +257,9 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ header, symbol })
                     });
+                    if (!res.ok) {
+                        throw new Error(`Server error: ${res.status}`);
+                    }
                     const newMessage = await res.json();
                     winningMessages.push(newMessage);
                     document.getElementById('newHeader').value = '';
@@ -264,7 +267,7 @@
                     renderMessagesList();
                 } catch (err) {
                     console.error('Error adding message:', err);
-                    alert('Սխալ տեղի ունեցավ');
+                    alert(`Սխալ: ${err.message}\nՍտուգիր՝ սերվերը միացված է (npm start)`);
                 }
             } else {
                 alert('Լրացրեք բոլոր դաշտերը');

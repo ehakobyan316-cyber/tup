@@ -132,8 +132,18 @@ body {
 </div>
 
 <script>
-// API Base URL
-const API_URL = 'http://localhost:3000/api';
+
+    let userId = localStorage.getItem("userId");
+
+if (!userId) {
+    userId = Date.now() + "_" + Math.random();
+    localStorage.setItem("userId", userId);
+}
+
+
+
+// API Base URL - dynamic based on current page
+const API_URL = `${window.location.protocol}//${window.location.hostname}:${window.location.port}/api`;
 
 // Initialize winning messages from API
 let winningMessages = [];
@@ -173,72 +183,85 @@ async function loadData() {
     }
 }
 
-loadData();
+// Global boxes array
+let boxes = [];
 
-// ստեղծում ենք 12 տուփ
-const container = document.getElementById('boxesContainer');
-const boxes = [];
+// Load data first, then create boxes
+loadData().then(() => {
+    createBoxes();
+});
 
-for (let i = 0; i < 12; i++) {
-    const box = document.createElement('div');
-    box.className = 'click-box';
-    box.dataset.index = i;
+function createBoxes() {
+    // ստեղծում ենք 12 տուփ
+    const container = document.getElementById('boxesContainer');
+    boxes = [];
 
-    box.onclick = async function() {
-        // Check if game has already been played
-        if (gamePlayed) {
-            return;
-        }
-        gamePlayed = true;
-        clickedBoxIndex = i;
-        
-        // Save to API
-        try {
-            await fetch(`${API_URL}/gamestate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gamePlayed: true, clickedBoxIndex: i, wasWin: false })
+    for (let i = 0; i < 12; i++) {
+        const box = document.createElement('div');
+        box.className = 'click-box';
+        box.dataset.index = i;
+
+        box.onclick = async function() {
+            // Check if game has already been played
+            if (gamePlayed) {
+                return;
+            }
+            gamePlayed = true;
+            clickedBoxIndex = i;
+            
+            // Save to API
+            try {
+                await fetch(`${API_URL}/gamestate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        userId,
+                        gamePlayed: true, 
+                        clickedBoxIndex: i, 
+                        wasWin: false 
+                    })
+                });
+            } catch (err) {
+                console.error('Error saving game state:', err);
+            }
+            
+            // Disable all boxes
+            boxes.forEach(b => {
+                b.style.pointerEvents = 'none';
+                b.style.opacity = '0.5';
             });
-        } catch (err) {
-            console.error('Error saving game state:', err);
-        }
-        
-        // Disable all boxes
-        boxes.forEach(b => {
-            b.style.pointerEvents = 'none';
-            b.style.opacity = '0.5';
-        });
-        
-        checkRandomWin(this, i);
-    };
+            
+            checkRandomWin(this, i);
+        };
 
-    container.appendChild(box);
-    boxes.push(box);
-}
+        container.appendChild(box);
+        boxes.push(box);
+    }
 
-// Restore game state on page load (with delay to ensure boxes are rendered)
-setTimeout(() => {
-    if (gamePlayed) {
-        boxes.forEach(b => {
-            b.style.pointerEvents = 'none';
-            b.style.opacity = '0.5';
-        });
+    // Restore game state on page load (with delay to ensure boxes are rendered)
+    setTimeout(() => {
+        if (gamePlayed) {
+            boxes.forEach(b => {
+                b.style.pointerEvents = 'none';
+                b.style.opacity = '0.5';
+            });
         
-        // Restore box color
-        if (clickedBoxIndex >= 0 && boxes[clickedBoxIndex]) {
-            if (wasWin) {
-                boxes[clickedBoxIndex].style.background = "rgba(0,100,0,0.8)";
-            } else {
-                boxes[clickedBoxIndex].style.background = "rgba(139,0,0,0.8)";
+            // Restore box color
+            if (clickedBoxIndex >= 0 && boxes[clickedBoxIndex]) {
+                if (wasWin) {
+                    boxes[clickedBoxIndex].style.background = "rgba(0,100,0,0.8)";
+                } else {
+                    boxes[clickedBoxIndex].style.background = "rgba(139,0,0,0.8)";
+                }
             }
         }
-    }
-}, 100);
+    }, 100);
+}
 
 // Poll for game state changes (for admin reset)
 setInterval(async () => {
     try {
-        const gameStateRes = await fetch(`${API_URL}/gamestate`);
+        const gameStateRes = await fetch(`${API_URL}/gamestate?userId=${userId}`);
         const gameState = await gameStateRes.json();
         if (gameState.gamePlayed === false && gamePlayed === true) {
             location.reload();
@@ -275,7 +298,12 @@ async function checkRandomWin(box, index) {
         await fetch(`${API_URL}/gamestate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ gamePlayed: true, clickedBoxIndex, wasWin })
+            body: JSON.stringify({ 
+                userId,
+                gamePlayed: true, 
+                clickedBoxIndex, 
+                wasWin 
+            })
         });
     } catch (err) {
         console.error('Error saving win state:', err);

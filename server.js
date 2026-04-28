@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
+const os = require('os');
 
 const app = express();
 const PORT = 3000;
@@ -12,145 +13,196 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// Data file paths
+// Paths
 const DATA_DIR = path.join(__dirname, 'data');
 const MESSAGES_FILE = path.join(DATA_DIR, 'messages.json');
 const GAMESTATE_FILE = path.join(DATA_DIR, 'gamestate.json');
 
-// Initialize data directory and files
-if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR);
-}
+// Init files
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 
 if (!fs.existsSync(MESSAGES_FILE)) {
     fs.writeFileSync(MESSAGES_FILE, JSON.stringify([]));
 }
 
 if (!fs.existsSync(GAMESTATE_FILE)) {
-    fs.writeFileSync(GAMESTATE_FILE, JSON.stringify({ gamePlayed: false, clickedBoxIndex: -1, wasWin: false }));
+    fs.writeFileSync(GAMESTATE_FILE, JSON.stringify({
+        gamePlayed: false,
+        clickedBoxIndex: -1,
+        wasWin: false
+    }));
 }
 
-// Helper functions
-const readMessages = () => {
-    const data = fs.readFileSync(MESSAGES_FILE, 'utf8');
+// Async helpers (ավելի լավ է, քան sync)
+const readJSON = async (file) => {
+    const data = await fs.promises.readFile(file, 'utf8');
     return JSON.parse(data);
 };
 
-const writeMessages = (messages) => {
-    fs.writeFileSync(MESSAGES_FILE, JSON.stringify(messages, null, 2));
+const writeJSON = async (file, data) => {
+    await fs.promises.writeFile(file, JSON.stringify(data, null, 2));
 };
 
-const readGameState = () => {
-    const data = fs.readFileSync(GAMESTATE_FILE, 'utf8');
-    return JSON.parse(data);
+// Validation
+const validateMessage = (body) => {
+    return body.header && body.symbol;
 };
 
-const writeGameState = (gameState) => {
-    fs.writeFileSync(GAMESTATE_FILE, JSON.stringify(gameState, null, 2));
-};
+// -------- ROUTES --------
 
-// API Routes
-
-// Winning Messages
-app.get('/api/messages/winning', (req, res) => {
+// Winning
+app.get('/api/messages/winning', async (req, res) => {
     try {
-        const messages = readMessages().filter(m => m.type === 'winning');
+        const messages = (await readJSON(MESSAGES_FILE)).filter(m => m.type === 'winning');
         res.json(messages);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 
-app.post('/api/messages/winning', (req, res) => {
+app.post('/api/messages/winning', async (req, res) => {
     try {
-        const { header, symbol } = req.body;
-        const messages = readMessages();
-        const message = { _id: Date.now().toString(), header, symbol, type: 'winning' };
-        messages.push(message);
-        writeMessages(messages);
-        res.json(message);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        if (!validateMessage(req.body)) {
+            return res.status(400).json({ error: 'Invalid data' });
+        }
+
+        const messages = await readJSON(MESSAGES_FILE);
+        const newMsg = {
+            _id: Date.now().toString(),
+            header: req.body.header,
+            symbol: req.body.symbol,
+            type: 'winning'
+        };
+
+        messages.push(newMsg);
+        await writeJSON(MESSAGES_FILE, messages);
+
+        res.json(newMsg);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 
-app.delete('/api/messages/winning/:id', (req, res) => {
+app.delete('/api/messages/winning/:id', async (req, res) => {
     try {
-        const messages = readMessages().filter(m => m._id !== req.params.id);
-        writeMessages(messages);
+        const messages = await readJSON(MESSAGES_FILE);
+        const filtered = messages.filter(m => m._id !== req.params.id);
+
+        await writeJSON(MESSAGES_FILE, filtered);
         res.json({ message: 'Deleted' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 
-// Losing Messages
-app.get('/api/messages/losing', (req, res) => {
+// Losing
+app.get('/api/messages/losing', async (req, res) => {
     try {
-        const messages = readMessages().filter(m => m.type === 'losing');
+        const messages = (await readJSON(MESSAGES_FILE)).filter(m => m.type === 'losing');
         res.json(messages);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 
-app.post('/api/messages/losing', (req, res) => {
+app.post('/api/messages/losing', async (req, res) => {
     try {
-        const { header, symbol } = req.body;
-        const messages = readMessages();
-        const message = { _id: Date.now().toString(), header, symbol, type: 'losing' };
-        messages.push(message);
-        writeMessages(messages);
-        res.json(message);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        if (!validateMessage(req.body)) {
+            return res.status(400).json({ error: 'Invalid data' });
+        }
+
+        const messages = await readJSON(MESSAGES_FILE);
+
+        const newMsg = {
+            _id: Date.now().toString(),
+            header: req.body.header,
+            symbol: req.body.symbol,
+            type: 'losing'
+        };
+
+        messages.push(newMsg);
+        await writeJSON(MESSAGES_FILE, messages);
+
+        res.json(newMsg);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 
-app.delete('/api/messages/losing/:id', (req, res) => {
+app.delete('/api/messages/losing/:id', async (req, res) => {
     try {
-        const messages = readMessages().filter(m => m._id !== req.params.id);
-        writeMessages(messages);
+        const messages = await readJSON(MESSAGES_FILE);
+        const filtered = messages.filter(m => m._id !== req.params.id);
+
+        await writeJSON(MESSAGES_FILE, filtered);
         res.json({ message: 'Deleted' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 
-// Game State
-app.get('/api/gamestate', (req, res) => {
+// GameState
+app.get('/api/gamestate', async (req, res) => {
     try {
-        const gameState = readGameState();
+        const gameState = await readJSON(GAMESTATE_FILE);
         res.json(gameState);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 
-app.post('/api/gamestate', (req, res) => {
+app.post('/api/gamestate', async (req, res) => {
     try {
-        const gameState = readGameState();
-        Object.assign(gameState, req.body);
-        writeGameState(gameState);
-        res.json(gameState);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        const gameState = await readJSON(GAMESTATE_FILE);
+
+        const updated = { ...gameState, ...req.body };
+
+        await writeJSON(GAMESTATE_FILE, updated);
+        res.json(updated);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 
-app.delete('/api/gamestate', (req, res) => {
+app.delete('/api/gamestate', async (req, res) => {
     try {
-        writeGameState({ gamePlayed: false, clickedBoxIndex: -1, wasWin: false });
-        res.json({ message: 'Game state reset' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        const reset = {
+            gamePlayed: false,
+            clickedBoxIndex: -1,
+            wasWin: false
+        };
+
+        await writeJSON(GAMESTATE_FILE, reset);
+        res.json({ message: 'Reset done' });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 
+// Root
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Better IP detection
+const getLocalIP = () => {
+    const nets = os.networkInterfaces();
+    for (const name of Object.keys(nets)) {
+        for (const net of nets[name]) {
+            if (net.family === 'IPv4' && !net.internal) {
+                return net.address;
+            }
+        }
+    }
+    return 'localhost';
+};
+
+// Start
 app.listen(PORT, HOST, () => {
-    const localIP = require('os').networkInterfaces().eth0?.[0]?.address || require('os').networkInterfaces()['Wi-Fi']?.[0]?.address || 'your-local-ip';
-    console.log(`Server running on http://${HOST}:${PORT}`);
-    console.log(`Local access: http://localhost:${PORT}/index.html`);
-    console.log(`Network access: http://${localIP}:${PORT}/index.html`);
-    console.log(`Admin: http://${localIP}:${PORT}/admin.html`);
+    const ip = getLocalIP();
+
+    console.log(`Server: http://${HOST}:${PORT}`);
+    console.log(`Local: http://localhost:${PORT}`);
+    console.log(`Network: http://${ip}:${PORT}`);
+    console.log(`Admin: http://${ip}:${PORT}/admin.html`);
 });
