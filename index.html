@@ -132,30 +132,24 @@ body {
 </div>
 
 <script>
-
-    let userId = localStorage.getItem("userId");
-
+let userId = localStorage.getItem("userId");
 if (!userId) {
     userId = Date.now() + "_" + Math.random();
     localStorage.setItem("userId", userId);
 }
 
+const API_URL = window.location.protocol === 'file:'
+    ? 'http://localhost:3000/api'
+    : `${window.location.protocol}//${window.location.hostname}:${window.location.port}/api`;
 
-
-// API Base URL - dynamic based on current page
-const API_URL = `${window.location.protocol}//${window.location.hostname}:${window.location.port}/api`;
-
-// Initialize winning messages from API
 let winningMessages = [];
-// Initialize losing messages from API
 let losingMessages = [];
-
-// Track if game has been played (only one box click total)
 let gamePlayed = false;
 let clickedBoxIndex = -1;
 let wasWin = false;
+let boxes = [];
+let winsEnabled = true;
 
-// Load data from API
 async function loadData() {
     try {
         const winningRes = await fetch(`${API_URL}/messages/winning`);
@@ -163,36 +157,46 @@ async function loadData() {
         if (winningMessages.length === 0) {
             winningMessages = [{ _id: 'default', header: 'Շնորհավոր դուք հաղթեցիք', symbol: '💎' }];
         }
+    } catch (err) {
+        console.error('Error loading winning messages:', err);
+        winningMessages = [{ _id: 'default', header: 'Շնորհավոր դուք հաղթեցիք', symbol: '💎' }];
+    }
 
+    try {
         const losingRes = await fetch(`${API_URL}/messages/losing`);
         losingMessages = await losingRes.json();
         if (losingMessages.length === 0) {
             losingMessages = [{ _id: 'default', header: '', symbol: '❌ Չհաջողվեց' }];
         }
-
-        const gameStateRes = await fetch(`${API_URL}/gamestate`);
-        const gameState = await gameStateRes.json();
-        gamePlayed = gameState.gamePlayed;
-        clickedBoxIndex = gameState.clickedBoxIndex;
-        wasWin = gameState.wasWin;
     } catch (err) {
-        console.error('Error loading data:', err);
-        // Fallback to defaults if API fails
-        winningMessages = [{ _id: 'default', header: 'Շնորհավոր դուք հաղթեցիք', symbol: '💎' }];
+        console.error('Error loading losing messages:', err);
         losingMessages = [{ _id: 'default', header: '', symbol: '❌ Չհաջողվեց' }];
+    }
+
+    try {
+        const gameStateRes = await fetch(`${API_URL}/gamestate?userId=${userId}`, { cache: 'no-store' });
+        const gameState = await gameStateRes.json();
+        gamePlayed = gameState.gamePlayed || false;
+        clickedBoxIndex = gameState.clickedBoxIndex ?? -1;
+        wasWin = gameState.wasWin || false;
+    } catch (err) {
+        console.error('Error loading game state:', err);
+    }
+
+    try {
+        const settingsRes = await fetch(`${API_URL}/settings`);
+        const settings = await settingsRes.json();
+        winsEnabled = settings.winsEnabled !== false;
+    } catch (err) {
+        console.error('Error loading settings:', err);
     }
 }
 
-// Global boxes array
-let boxes = [];
-
-// Load data first, then create boxes
 loadData().then(() => {
     createBoxes();
 });
 
 function createBoxes() {
-    // ստեղծում ենք 12 տուփ
     const container = document.getElementById('boxesContainer');
     boxes = [];
 
@@ -202,35 +206,28 @@ function createBoxes() {
         box.dataset.index = i;
 
         box.onclick = async function() {
-            // Check if game has already been played
             if (gamePlayed) {
+                alert("Դուք արդեն խաղացել եք։ Սպասեք ադմինի reset-ին");
                 return;
             }
             gamePlayed = true;
             clickedBoxIndex = i;
-            
-            // Save to API
+
             try {
                 await fetch(`${API_URL}/gamestate`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        userId,
-                        gamePlayed: true, 
-                        clickedBoxIndex: i, 
-                        wasWin: false 
-                    })
+                    body: JSON.stringify({ userId, gamePlayed: true, clickedBoxIndex: i })
                 });
             } catch (err) {
                 console.error('Error saving game state:', err);
             }
-            
-            // Disable all boxes
+
             boxes.forEach(b => {
                 b.style.pointerEvents = 'none';
                 b.style.opacity = '0.5';
             });
-            
+
             checkRandomWin(this, i);
         };
 
@@ -238,15 +235,12 @@ function createBoxes() {
         boxes.push(box);
     }
 
-    // Restore game state on page load (with delay to ensure boxes are rendered)
     setTimeout(() => {
         if (gamePlayed) {
             boxes.forEach(b => {
                 b.style.pointerEvents = 'none';
                 b.style.opacity = '0.5';
             });
-        
-            // Restore box color
             if (clickedBoxIndex >= 0 && boxes[clickedBoxIndex]) {
                 if (wasWin) {
                     boxes[clickedBoxIndex].style.background = "rgba(0,100,0,0.8)";
@@ -258,7 +252,6 @@ function createBoxes() {
     }, 100);
 }
 
-// Poll for game state changes (for admin reset)
 setInterval(async () => {
     try {
         const gameStateRes = await fetch(`${API_URL}/gamestate?userId=${userId}`);
@@ -271,16 +264,14 @@ setInterval(async () => {
     }
 }, 2000);
 
-
 async function checkRandomWin(box, index) {
     const modal = document.getElementById('winningModal');
     const header = document.getElementById('modalHeader');
     const body = document.getElementById('winningAmount');
 
-    const isWinner = Math.random() < 0.3;
+    const isWinner = winsEnabled && Math.random() < 0.3;
 
     if (isWinner) {
-        // Randomly select a winning message
         const randomMessage = winningMessages[Math.floor(Math.random() * winningMessages.length)];
         header.textContent = randomMessage.header;
         body.textContent = randomMessage.symbol;
@@ -293,17 +284,11 @@ async function checkRandomWin(box, index) {
         wasWin = false;
     }
 
-    // Save win/lose state to API
     try {
         await fetch(`${API_URL}/gamestate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                userId,
-                gamePlayed: true, 
-                clickedBoxIndex, 
-                wasWin 
-            })
+            body: JSON.stringify({ userId, gamePlayed: true, clickedBoxIndex, wasWin })
         });
     } catch (err) {
         console.error('Error saving win state:', err);

@@ -5,204 +5,182 @@ const cors = require('cors');
 const os = require('os');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// Paths
 const DATA_DIR = path.join(__dirname, 'data');
 const MESSAGES_FILE = path.join(DATA_DIR, 'messages.json');
 const GAMESTATE_FILE = path.join(DATA_DIR, 'gamestate.json');
 
-// Init files
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 
-if (!fs.existsSync(MESSAGES_FILE)) {
-    fs.writeFileSync(MESSAGES_FILE, JSON.stringify([]));
-}
-
-if (!fs.existsSync(GAMESTATE_FILE)) {
-    fs.writeFileSync(GAMESTATE_FILE, JSON.stringify({
-        gamePlayed: false,
-        clickedBoxIndex: -1,
-        wasWin: false
-    }));
-}
-
-// Async helpers (ավելի լավ է, քան sync)
-const readJSON = async (file) => {
-    const data = await fs.promises.readFile(file, 'utf8');
-    return JSON.parse(data);
+// INIT FILES
+const initFile = (file, defaultValue) => {
+    try {
+        if (!fs.existsSync(file)) {
+            fs.writeFileSync(file, JSON.stringify(defaultValue, null, 2));
+        } else {
+            const data = fs.readFileSync(file, 'utf8');
+            if (!data || data.trim() === "") {
+                fs.writeFileSync(file, JSON.stringify(defaultValue, null, 2));
+            }
+        }
+    } catch (e) {
+        console.log("Init error:", e.message);
+        fs.writeFileSync(file, JSON.stringify(defaultValue, null, 2));
+    }
 };
 
+initFile(MESSAGES_FILE, []);
+initFile(GAMESTATE_FILE, { users: {}, winsEnabled: true });
+
+// SAFE READ
+const readJSON = async (file, fallback) => {
+    try {
+        const data = await fs.promises.readFile(file, 'utf8');
+        if (!data || data.trim() === "") return fallback;
+        return JSON.parse(data);
+    } catch (e) {
+        console.log("JSON read error:", file, e.message);
+        return fallback;
+    }
+};
+
+// WRITE
 const writeJSON = async (file, data) => {
     await fs.promises.writeFile(file, JSON.stringify(data, null, 2));
 };
 
-// Validation
-const validateMessage = (body) => {
-    return body.header && body.symbol;
-};
+const validateMessage = (b) => b && b.header && b.symbol;
 
-// -------- ROUTES --------
-
-// Winning
+// WINNING
 app.get('/api/messages/winning', async (req, res) => {
-    try {
-        const messages = (await readJSON(MESSAGES_FILE)).filter(m => m.type === 'winning');
-        res.json(messages);
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    const messages = await readJSON(MESSAGES_FILE, []);
+    res.json(messages.filter(m => m.type === 'winning'));
 });
 
 app.post('/api/messages/winning', async (req, res) => {
-    try {
-        if (!validateMessage(req.body)) {
-            return res.status(400).json({ error: 'Invalid data' });
-        }
+    if (!validateMessage(req.body)) return res.status(400).json({ error: 'Invalid' });
 
-        const messages = await readJSON(MESSAGES_FILE);
-        const newMsg = {
-            _id: Date.now().toString(),
-            header: req.body.header,
-            symbol: req.body.symbol,
-            type: 'winning'
-        };
+    const messages = await readJSON(MESSAGES_FILE, []);
 
-        messages.push(newMsg);
-        await writeJSON(MESSAGES_FILE, messages);
+    const newMsg = {
+        _id: Date.now().toString(),
+        header: req.body.header,
+        symbol: req.body.symbol,
+        type: 'winning'
+    };
 
-        res.json(newMsg);
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    messages.push(newMsg);
+    await writeJSON(MESSAGES_FILE, messages);
+
+    res.json(newMsg);
 });
 
 app.delete('/api/messages/winning/:id', async (req, res) => {
-    try {
-        const messages = await readJSON(MESSAGES_FILE);
-        const filtered = messages.filter(m => m._id !== req.params.id);
-
-        await writeJSON(MESSAGES_FILE, filtered);
-        res.json({ message: 'Deleted' });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    const messages = await readJSON(MESSAGES_FILE, []);
+    const filtered = messages.filter(m => m._id !== req.params.id);
+    await writeJSON(MESSAGES_FILE, filtered);
+    res.json({ message: 'Deleted' });
 });
 
-// Losing
+// LOSING
 app.get('/api/messages/losing', async (req, res) => {
-    try {
-        const messages = (await readJSON(MESSAGES_FILE)).filter(m => m.type === 'losing');
-        res.json(messages);
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    const messages = await readJSON(MESSAGES_FILE, []);
+    res.json(messages.filter(m => m.type === 'losing'));
 });
 
 app.post('/api/messages/losing', async (req, res) => {
-    try {
-        if (!validateMessage(req.body)) {
-            return res.status(400).json({ error: 'Invalid data' });
-        }
+    if (!validateMessage(req.body)) return res.status(400).json({ error: 'Invalid' });
 
-        const messages = await readJSON(MESSAGES_FILE);
+    const messages = await readJSON(MESSAGES_FILE, []);
 
-        const newMsg = {
-            _id: Date.now().toString(),
-            header: req.body.header,
-            symbol: req.body.symbol,
-            type: 'losing'
-        };
+    const newMsg = {
+        _id: Date.now().toString(),
+        header: req.body.header,
+        symbol: req.body.symbol,
+        type: 'losing'
+    };
 
-        messages.push(newMsg);
-        await writeJSON(MESSAGES_FILE, messages);
+    messages.push(newMsg);
+    await writeJSON(MESSAGES_FILE, messages);
 
-        res.json(newMsg);
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    res.json(newMsg);
 });
 
 app.delete('/api/messages/losing/:id', async (req, res) => {
-    try {
-        const messages = await readJSON(MESSAGES_FILE);
-        const filtered = messages.filter(m => m._id !== req.params.id);
-
-        await writeJSON(MESSAGES_FILE, filtered);
-        res.json({ message: 'Deleted' });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    const messages = await readJSON(MESSAGES_FILE, []);
+    const filtered = messages.filter(m => m._id !== req.params.id);
+    await writeJSON(MESSAGES_FILE, filtered);
+    res.json({ message: 'Deleted' });
 });
 
-// GameState
+// GAMESTATE
 app.get('/api/gamestate', async (req, res) => {
-    try {
-        const gameState = await readJSON(GAMESTATE_FILE);
-        res.json(gameState);
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    const { userId } = req.query;
+    const all = await readJSON(GAMESTATE_FILE, { users: {} });
+
+    if (!userId) return res.json(all);
+
+    res.json(all.users[userId] || {
+        gamePlayed: false,
+        clickedBoxIndex: -1,
+        wasWin: false
+    });
 });
 
 app.post('/api/gamestate', async (req, res) => {
-    try {
-        const gameState = await readJSON(GAMESTATE_FILE);
+    const { userId, gamePlayed, clickedBoxIndex, wasWin } = req.body;
 
-        const updated = { ...gameState, ...req.body };
+    if (!userId) return res.status(400).json({ error: 'userId required' });
 
-        await writeJSON(GAMESTATE_FILE, updated);
-        res.json(updated);
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    const all = await readJSON(GAMESTATE_FILE, { users: {} });
+
+    // Merge with existing state (partial update)
+    const existing = all.users[userId] || {
+        gamePlayed: false,
+        clickedBoxIndex: -1,
+        wasWin: false
+    };
+
+    all.users[userId] = {
+        gamePlayed: 'gamePlayed' in req.body ? !!gamePlayed : existing.gamePlayed,
+        clickedBoxIndex: 'clickedBoxIndex' in req.body ? (clickedBoxIndex ?? -1) : existing.clickedBoxIndex,
+        wasWin: 'wasWin' in req.body ? !!wasWin : existing.wasWin
+    };
+
+    await writeJSON(GAMESTATE_FILE, all);
+    res.json(all.users[userId]);
 });
 
 app.delete('/api/gamestate', async (req, res) => {
-    try {
-        const reset = {
-            gamePlayed: false,
-            clickedBoxIndex: -1,
-            wasWin: false
-        };
-
-        await writeJSON(GAMESTATE_FILE, reset);
-        res.json({ message: 'Reset done' });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    await writeJSON(GAMESTATE_FILE, { users: {} });
+    res.json({ message: 'reset done' });
 });
 
-// Root
+// SETTINGS
+app.get('/api/settings', async (req, res) => {
+    const all = await readJSON(GAMESTATE_FILE, { users: {}, winsEnabled: true });
+    res.json({ winsEnabled: all.winsEnabled !== false });
+});
+
+app.post('/api/settings', async (req, res) => {
+    const { winsEnabled } = req.body;
+    const all = await readJSON(GAMESTATE_FILE, { users: {}, winsEnabled: true });
+    all.winsEnabled = !!winsEnabled;
+    await writeJSON(GAMESTATE_FILE, all);
+    res.json({ winsEnabled: all.winsEnabled });
+});
+
+// ROOT
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Better IP detection
-const getLocalIP = () => {
-    const nets = os.networkInterfaces();
-    for (const name of Object.keys(nets)) {
-        for (const net of nets[name]) {
-            if (net.family === 'IPv4' && !net.internal) {
-                return net.address;
-            }
-        }
-    }
-    return 'localhost';
-};
-
-// Start
 app.listen(PORT, HOST, () => {
-    const ip = getLocalIP();
-
-    console.log(`Server: http://${HOST}:${PORT}`);
-    console.log(`Local: http://localhost:${PORT}`);
-    console.log(`Network: http://${ip}:${PORT}`);
-    console.log(`Admin: http://${ip}:${PORT}/admin.html`);
+    console.log(`Server running: http://localhost:${PORT}`);
 });

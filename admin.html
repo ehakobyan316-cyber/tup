@@ -189,6 +189,14 @@
         <div class="admin-header">Ադմին Պանել</div>
         
         <div id="adminSection">
+            <div class="toggle-container">
+                <span class="toggle-label">Շահումները</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="winsToggle" onchange="toggleWins()">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
             <button class="admin-btn-action admin-btn-close" style="width: 100%; background: #FF9800; color: white;" onclick="resetClicks()">Վերականգնել Սեղմումները</button>
             
             <div class="admin-input-group">
@@ -212,7 +220,9 @@
     </div>
 
     <script>
-        const API_URL = `${window.location.protocol}//${window.location.hostname}:${window.location.port}/api`;
+        const API_URL = window.location.protocol === 'file:'
+            ? 'http://localhost:3001/api'
+            : `${window.location.protocol}//${window.location.hostname}:${window.location.port}/api`;
         let winningMessages = [];
         let losingMessages = [];
 
@@ -234,7 +244,32 @@
         // Initialize on page load
         window.onload = function() {
             loadData();
+            loadSettings();
         };
+
+        async function loadSettings() {
+            try {
+                const res = await fetch(`${API_URL}/settings`);
+                const data = await res.json();
+                document.getElementById('winsToggle').checked = data.winsEnabled;
+            } catch (err) {
+                console.error('Error loading settings:', err);
+            }
+        }
+
+        async function toggleWins() {
+            const enabled = document.getElementById('winsToggle').checked;
+            try {
+                await fetch(`${API_URL}/settings`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ winsEnabled: enabled })
+                });
+            } catch (err) {
+                console.error('Error saving settings:', err);
+                alert('Սխալ տեղի ունեցավ');
+            }
+        }
 
         async function resetClicks() {
             try {
